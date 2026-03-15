@@ -8,7 +8,7 @@ env:
   PROJECT_ID: apex-internal-apps
   SERVICE: recipe-capture
   REGION: us-central1
-  IMAGE: gcr.io/apex-internal-apps/recipe-capture
+  IMAGE: us-central1-docker.pkg.dev/apex-internal-apps/workflow-assistant/recipe-capture
 
 jobs:
   deploy:
@@ -27,8 +27,8 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker --quiet
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Build Docker image
         run: docker build -t $IMAGE:$GITHUB_SHA -t $IMAGE:latest .
