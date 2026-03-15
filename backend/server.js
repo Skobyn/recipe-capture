@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const path = require('path');
 
@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are a friendly and efficient recipe assistant that helps users capture their recipes in a structured format for Recime, a recipe management app.
 
@@ -22,7 +22,7 @@ Your goal is to extract the following information through natural conversation:
 - Optional notes or tips
 
 Conversation process:
-1. First turn: Warmly greet the user and ask them to describe their recipe
+1. First turn (no prior messages): Warmly greet the user and ask them to describe their recipe
 2. As they describe it, extract what you can from their message
 3. Ask targeted follow-up questions ONLY for fields that are still missing or unclear — don't ask for things already provided
 4. Be conversational and friendly, not robotic
@@ -55,17 +55,40 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { messages } = req.body;
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...messages
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.7
+    // Convert messages to Anthropic format (user/assistant only)
+    const anthropicMessages = messages.map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content
+    }));
+
+    // If no messages yet, start with a user prompt to trigger the greeting
+    const messagesToSend = anthropicMessages.length === 0
+      ? [{ role: 'user', content: 'Hello, I want to capture a recipe.' }]
+      : anthropicMessages;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: messagesToSend
     });
 
-    const content = JSON.parse(response.choices[0].message.content);
+    const rawText = response.content[0].text.trim();
+
+    // Parse JSON response
+    let content;
+    try {
+      content = JSON.parse(rawText);
+    } catch (e) {
+      // Try to extract JSON from text
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        content = JSON.parse(match[0]);
+      } else {
+        throw new Error('Could not parse AI response as JSON');
+      }
+    }
+
     res.json(content);
   } catch (error) {
     console.error('Chat error:', error);
